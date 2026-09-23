@@ -1,26 +1,60 @@
-name: Deploy Pages
+name: Build and Deploy Pages
 on:
   push:
     branches: [main]
+    paths:
+      - "data.xlsx"
+      - "build.py"
+      - "requirements.txt"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
+
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
+
 concurrency:
   group: pages
   cancel-in-progress: true
+
 jobs:
-  deploy:
+  build-deploy:
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Build index.html from data.xlsx
+        run: python build.py
+
+      - name: Commit rebuilt HTML if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --staged --quiet; then
+            echo "No HTML changes"
+          else
+            git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>" -m "Rebuild index.html from data.xlsx"
+            git push
+          fi
+
       - uses: actions/configure-pages@v5
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
+          include-hidden-files: true
+
       - id: deployment
         uses: actions/deploy-pages@v4
